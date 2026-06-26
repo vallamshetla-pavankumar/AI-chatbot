@@ -1,0 +1,57 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Admin {
+  id            Int      @id @default(autoincrement())
+  username      String   @unique
+  password_hash String
+  created_at    DateTime @default(now())
+
+  @@map("admins")
+}
+
+model Customer {
+  id              Int      @id @default(autoincrement())
+  name            String
+  whatsapp_number String   @unique
+  email           String   @unique
+  password_hash   String
+  address         String?
+  created_at      DateTime @default(now())
+  orders          Order[]
+
+  @@map("customers")
+}
+
+model MenuItem {
+  id           Int      @id @default(autoincrement())
+  name         String
+  category     String
+  price        Float
+  is_available Boolean  @default(true)
+  image_url    String?
+  created_at   DateTime @default(now())
+
+  @@map("menu_items")
+}
+
+model Order {
+  id               Int      @id @default(autoincrement())
+  customer_id      Int
+  customer         Customer @relation(fields: [customer_id], references: [id])
+  items            String   // Format: JSON serialized array of objects [{ name: string, quantity: number, price: float }]
+  total_amount     Float
+  payment_status   String   // "Pending", "Paid", "Failed"
+  order_status     String   // "Received", "In Preparation", "Dispatched", "Delivered"
+  delivery_address String
+  created_at       DateTime @default(now())
+
+  @@map("orders")
+}

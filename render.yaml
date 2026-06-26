@@ -1,0 +1,40 @@
+services:
+  # Express backend API service
+  - type: web
+    name: orderbot-backend
+    env: node
+    plan: free
+    buildCommand: npm install --prefix backend && npx prisma generate --schema=backend/prisma/schema.prisma
+    startCommand: npm start --prefix backend
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: orderbot-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+
+  # Vite frontend static site
+  - type: web
+    name: orderbot-frontend
+    env: static
+    plan: free
+    buildCommand: npm install --prefix frontend && npm run build --prefix frontend
+    publishDir: frontend/dist
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=0, must-revalidate
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: orderbot-backend
+          property: url
+          path: /api
+
+databases:
+  - name: orderbot-db
+    plan: free
