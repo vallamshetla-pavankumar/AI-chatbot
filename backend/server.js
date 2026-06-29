@@ -21,7 +21,11 @@ const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
-    if (/^http:\/\/localhost(:\d+)?$/.test(origin) || origin === frontendUrl) {
+    if (
+      /^http:\/\/localhost(:\d+)?$/.test(origin) ||
+      origin === frontendUrl ||
+      /^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(origin)
+    ) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
