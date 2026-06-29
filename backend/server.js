@@ -4,6 +4,17 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 const prisma = require('./db');
 
+// Dynamically push schema to SQLite if running in production/Render env
+try {
+  console.log('[STARTUP] Initializing SQLite database schema...');
+  const { execSync } = require('child_process');
+  execSync('npx prisma db push --skip-generate', { stdio: 'inherit' });
+  console.log('[STARTUP] SQLite database initialized successfully.');
+} catch (err) {
+  console.error('[STARTUP] Failed to initialize SQLite database schema:', err);
+}
+
+
 const path = require('path');
 
 const authRoutes = require('./routes/auth');
