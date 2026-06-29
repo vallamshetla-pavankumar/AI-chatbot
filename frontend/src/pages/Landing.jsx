@@ -10,6 +10,7 @@ export default function Landing() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [isScrolled, setIsScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -79,7 +80,8 @@ export default function Landing() {
           Akshaya Homely Foods
         </div>
 
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+        {/* Desktop nav links */}
+        <nav className="desktop-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
           <Link to="/" style={{ color: 'white', textDecoration: 'none', fontWeight: '500', fontSize: '0.9rem' }}>Home</Link>
           
           {!isLoggedIn ? (
@@ -102,6 +104,120 @@ export default function Landing() {
             </>
           )}
         </nav>
+
+        {/* Mobile Hamburger Toggle */}
+        <button
+          className="mobile-hamburger-btn"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'white',
+            cursor: 'pointer',
+            padding: '0.5rem',
+            
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {mobileMenuOpen ? (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          ) : (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          )}
+        </button>
+
+        {/* Mobile Nav Drawer Overlay */}
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <>
+              {/* Overlay */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  background: 'rgba(0,0,0,0.55)',
+                  zIndex: 999,
+                  backdropFilter: 'blur(4px)',
+                  WebkitBackdropFilter: 'blur(4px)',
+                }}
+              />
+              {/* Drawer Container */}
+              <motion.div
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  width: '75vw',
+                  maxWidth: '300px',
+                  background: 'rgba(15,15,26,0.98)',
+                  zIndex: 1000,
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  padding: '1.5rem 1.25rem',
+                  borderRight: '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                  <span style={{ color: 'white', fontWeight: '700', fontSize: '1.1rem' }}>Menu</span>
+                  <button
+                    onClick={() => setMobileMenuOpen(false)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', padding: '0.25rem' }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <button onClick={() => { navigate('/'); setMobileMenuOpen(false); }} className="mobile-drawer-btn">Home</button>
+                  
+                  {!isLoggedIn ? (
+                    <button onClick={() => { navigate('/login'); setMobileMenuOpen(false); }} className="mobile-drawer-btn">Login</button>
+                  ) : (
+                    <>
+                      <button onClick={() => { navigate('/my-orders'); setMobileMenuOpen(false); }} className="mobile-drawer-btn">My Orders</button>
+                      <button onClick={() => { navigate('/order-tracking'); setMobileMenuOpen(false); }} className="mobile-drawer-btn">Track Order</button>
+                      <button onClick={() => { navigate('/chat'); setMobileMenuOpen(false); }} className="mobile-drawer-btn">AI Chat</button>
+                      <button onClick={() => { navigate('/chat', { state: { openProfile: true } }); setMobileMenuOpen(false); }} className="mobile-drawer-btn">Profile</button>
+                    </>
+                  )}
+                </div>
+
+                {isLoggedIn && (
+                  <div style={{ marginTop: 'auto' }}>
+                    <button
+                      onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
+                      className="mobile-drawer-logout-btn"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
       </header>
 
       {/* ── HERO CONTENT ── */}
@@ -210,3 +326,4 @@ export default function Landing() {
     </div>
   );
 }
+

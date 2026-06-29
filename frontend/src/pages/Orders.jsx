@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { fetchOrders, updateOrderStatus } from '../utils/api';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/Topbar';
+import { cleanProductName } from '../utils/format';
 
 export default function Orders() {
   const queryClient = useQueryClient();
@@ -177,11 +178,15 @@ export default function Orders() {
                       </td>
                       <td>
                         <ul style={{ listStyleType: 'none', padding: 0 }}>
-                          {order.items.map((item, i) => (
-                            <li key={i} style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                              • {item.name} <strong>x{item.quantity}</strong>
-                            </li>
-                          ))}
+                          {order.items.map((item, i) => {
+                            const qtyStr = String(item.quantity).toLowerCase();
+                            const isWeight = qtyStr.includes('g') || qtyStr.includes('kg') || qtyStr.includes('ml') || qtyStr.includes('l');
+                            return (
+                              <li key={i} style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                                • {cleanProductName(item.name)} <strong>{isWeight ? '' : 'x'}{item.quantity}</strong>
+                              </li>
+                            );
+                          })}
                         </ul>
                       </td>
                       <td style={{ maxWidth: '200px', whiteSpace: 'normal', wordBreak: 'break-word', fontSize: '0.825rem' }}>

@@ -19,10 +19,15 @@ export default function Sidebar() {
     navigate('/login', { replace: true });
   };
 
+  const closeMobileSidebar = () => {
+    document.body.classList.remove('sidebar-open');
+  };
+
   return (
     <>
+      <div className="sidebar-mobile-overlay" onClick={closeMobileSidebar} />
       <aside className="sidebar">
-        <div className="sidebar-brand">
+        <div className="sidebar-brand" onClick={closeMobileSidebar} style={{ cursor: 'pointer' }}>
           <img
             src="https://akshayahomelyfoods.com/wp-content/uploads/2025/07/cropped-Ak-Logo-21-scaled-e1759121864836-1-170x109.png"
             alt="Akshaya Homely Foods Logo"
@@ -32,7 +37,7 @@ export default function Sidebar() {
         </div>
 
         <nav className="sidebar-nav">
-          <NavLink to="/orders" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+          <NavLink to="/orders" onClick={closeMobileSidebar} className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
             <svg className="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
               <line x1="9" y1="9" x2="15" y2="9"></line>
@@ -42,7 +47,7 @@ export default function Sidebar() {
             <span>Orders</span>
           </NavLink>
 
-          <NavLink to="/summary" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+          <NavLink to="/summary" onClick={closeMobileSidebar} className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
             <svg className="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="20" x2="18" y2="10"></line>
               <line x1="12" y1="20" x2="12" y2="4"></line>
@@ -51,7 +56,7 @@ export default function Sidebar() {
             <span>Daily Summary</span>
           </NavLink>
 
-          <NavLink to="/menu" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+          <NavLink to="/menu" onClick={closeMobileSidebar} className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
             <svg className="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 12l10 5 10-5M2 17l10 5 10-5"></path>
             </svg>
@@ -60,7 +65,7 @@ export default function Sidebar() {
         </nav>
 
         {/* Sidebar Logout Button */}
-        <button onClick={() => setShowConfirm(true)} className="sidebar-logout">
+        <button onClick={() => { closeMobileSidebar(); setShowConfirm(true); }} className="sidebar-logout">
           <svg className="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>
           </svg>

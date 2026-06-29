@@ -3,6 +3,32 @@ const bcrypt = require('bcrypt');
 
 const prisma = new PrismaClient();
 
+function getUnitTypeAndSizes(name, category) {
+  const n = (name || '').toLowerCase();
+  const c = (category || '').toLowerCase();
+  
+  if (c.includes('pickle') || n.includes('pickle')) {
+    return { unitType: 'WEIGHT', sizes: '250g,500g,1Kg,2Kg,5Kg' };
+  }
+  if (c.includes('sweet') || c.includes('laddu') || n.includes('laddu') || n.includes('sweet')) {
+    return { unitType: 'WEIGHT', sizes: '100g,250g,500g,750g,1Kg,2Kg,5Kg' };
+  }
+  if (c.includes('powder') || c.includes('podi') || n.includes('powder') || n.includes('podi') || n.includes('masala') || n.includes('spice')) {
+    return { unitType: 'WEIGHT', sizes: '100g,250g,500g,1Kg,2Kg' };
+  }
+  if (c.includes('oil') || n.includes('oil')) {
+    return { unitType: 'WEIGHT', sizes: '500ml,1L,2L,5L' };
+  }
+  if (c.includes('snack') || n.includes('janthikalu') || n.includes('chekkalu')) {
+    return { unitType: 'WEIGHT', sizes: '250g,500g,1Kg' };
+  }
+  if (c.includes('fruit') || n.includes('badam') || n.includes('anjeer') || n.includes('dates')) {
+    return { unitType: 'WEIGHT', sizes: '250g,500g,1Kg' };
+  }
+  
+  return { unitType: 'PIECE', sizes: '' };
+}
+
 async function main() {
   console.log('Clearing database...');
   // Clean in correct dependency order
@@ -47,18 +73,37 @@ async function main() {
 
   console.log('Seeding menu items...');
   const menuItems = [];
-  const menuItemData = [
-    { name: 'Avakaya Pickle (Mango)', category: 'Veg Pickles', price: 180.0, is_available: true },
-    { name: 'Gongura Pickle', category: 'Veg Pickles', price: 160.0, is_available: true },
-    { name: 'Chicken Pickle', category: 'Non Veg Pickles', price: 450.0, is_available: true },
-    { name: 'Mutton Pickle', category: 'Non Veg Pickles', price: 650.0, is_available: true },
-    { name: 'Kajjikayalu', category: 'Sweets', price: 200.0, is_available: true },
-    { name: 'Nuvvula Laddu', category: 'Traditional Laddus', price: 150.0, is_available: true },
-    { name: 'Janthikalu', category: 'Snacks Hot Items', price: 120.0, is_available: true },
-    { name: 'Chekkalu', category: 'Snacks Hot Items', price: 130.0, is_available: true },
-    { name: 'Kandi Podi', category: 'Powders Podis', price: 140.0, is_available: true },
-    { name: 'Karivepaku Podi', category: 'Powders Podis', price: 130.0, is_available: false },
-  ];
+  
+  let menuItemData = [];
+  try {
+    const scrapedProducts = require('./scraped_products.json');
+    menuItemData = scrapedProducts.map(p => {
+      const { unitType, sizes } = getUnitTypeAndSizes(p.name, p.category);
+      return {
+        name: p.name,
+        category: p.category,
+        price: parseFloat(p.price) || 200.0,
+        image_url: p.image || null,
+        is_available: p.price > 0,
+        unitType,
+        sizes
+      };
+    });
+  } catch (err) {
+    console.error('Could not load scraped_products.json, using default seed items:', err);
+    menuItemData = [
+      { name: 'Avakaya Pickle (Mango)', category: 'Veg Pickles', price: 180.0, is_available: true, unitType: 'WEIGHT', sizes: '250g,500g,1Kg,2Kg,5Kg' },
+      { name: 'Gongura Pickle', category: 'Veg Pickles', price: 160.0, is_available: true, unitType: 'WEIGHT', sizes: '250g,500g,1Kg,2Kg,5Kg' },
+      { name: 'Chicken Pickle', category: 'Non Veg Pickles', price: 450.0, is_available: true, unitType: 'WEIGHT', sizes: '250g,500g,1Kg,2Kg,5Kg' },
+      { name: 'Mutton Pickle', category: 'Non Veg Pickles', price: 650.0, is_available: true, unitType: 'WEIGHT', sizes: '250g,500g,1Kg,2Kg,5Kg' },
+      { name: 'Kajjikayalu', category: 'Sweets', price: 200.0, is_available: true, unitType: 'WEIGHT', sizes: '250g,500g,750g,1Kg,2Kg,5Kg' },
+      { name: 'Nuvvula Laddu', category: 'Traditional Laddus', price: 150.0, is_available: true, unitType: 'WEIGHT', sizes: '250g,500g,750g,1Kg,2Kg,5Kg' },
+      { name: 'Janthikalu', category: 'Snacks Hot Items', price: 120.0, is_available: true, unitType: 'WEIGHT', sizes: '250g,500g,1Kg' },
+      { name: 'Chekkalu', category: 'Snacks Hot Items', price: 130.0, is_available: true, unitType: 'WEIGHT', sizes: '250g,500g,1Kg' },
+      { name: 'Kandi Podi', category: 'Powders Podis', price: 140.0, is_available: true, unitType: 'WEIGHT', sizes: '100g,250g,500g,1Kg,2Kg' },
+      { name: 'Karivepaku Podi', category: 'Powders Podis', price: 130.0, is_available: false, unitType: 'WEIGHT', sizes: '100g,250g,500g,1Kg,2Kg' },
+    ];
+  }
 
   for (const m of menuItemData) {
     const item = await prisma.menuItem.create({ data: m });

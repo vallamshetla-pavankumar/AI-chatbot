@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUp, Plus, Loader2, LogOut, User, ShoppingBag, MapPin, ChevronDown } from 'lucide-react';
+import { ArrowUp, Plus, Loader2, LogOut, User, ShoppingBag, MapPin, ChevronDown, Menu as MenuIcon, X as XIcon, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './CustomerChat.css';
 
@@ -9,12 +9,101 @@ import './CustomerChat.css';
 const STEPS = {
   IDLE: 'IDLE',
   MENU: 'MENU',
+  PACK_SIZE: 'PACK_SIZE',
   QUANTITY: 'QUANTITY',
   ADDRESS: 'ADDRESS',
   SUMMARY: 'SUMMARY',
   PAYMENT: 'PAYMENT',
   SUCCESS: 'SUCCESS',
 };
+
+// ─── CLEAN PRODUCT NAME ───────────────────────────────────────────────────────
+// Strips HTML entities and weight suffixes (e.g. "Mirchi Powder &#8211; 1Kg" → "Mirchi Powder")
+function cleanName(name) {
+  if (!name) return '';
+  // Decode common HTML entities and strip Mojibake
+  let clean = name
+    .replace(/&#8211;/g, '-')
+    .replace(/&#8212;/g, '-')
+    .replace(/&ndash;/g, '-')
+    .replace(/&mdash;/g, '-')
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/ï¿½/g, '')  // Remove corrupted character
+    .replace(/â‚¹/g, '₹') // Correctly display Rupee symbol
+    .replace(/Â/g, '');   // Remove Â
+
+  try {
+    const doc = new DOMParser().parseFromString(clean, 'text/html');
+    clean = doc.documentElement.textContent || clean;
+  } catch (e) {
+    // fallback
+  }
+
+  // Remove weight/size suffix: " – 1Kg", " - 500g", " – 1L", etc.
+  clean = clean.replace(/\s*[–\-]\s*\d+\s*(g|gm|kg|ml|l|Kg|KG|ML|L|GM)\b.*/i, '');
+  
+  return clean
+    .replace(/ï¿½/g, '')
+    .replace(/â‚¹/g, '₹')
+    .replace(/Â/g, '')
+    .trim();
+}
+
+// Decodes common HTML entities
+function decodeHtmlEntities(str) {
+  if (!str) return '';
+  return str
+    .replace(/&#8211;/g, '–')
+    .replace(/&ndash;/g, '–')
+    .replace(/&#8212;/g, '—')
+    .replace(/&mdash;/g, '—')
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"');
+}
+
+// Extracts base size from the original name: e.g. "Ragi Laddu – 1 Kg" -> "1 Kg"
+function getBaseSize(name) {
+  if (!name) return null;
+  const decoded = decodeHtmlEntities(name);
+  const match = decoded.match(/\s*[–\-]\s*([\d.]+\s*(?:g|gm|kg|ml|l|Kg|KG|ML|L|GM))\b/i);
+  return match ? match[1] : null;
+}
+
+// Parses a size string to numeric value in grams or ml (e.g. "500g" -> 500, "1Kg" -> 1000)
+function parseSizeToGramsOrMl(sizeStr) {
+  if (!sizeStr) return 1;
+  const cleanedStr = sizeStr.replace(/\s+/g, '');
+  const match = cleanedStr.match(/([\d.]+)\s*(g|gm|kg|ml|l)\b/i);
+  if (!match) return 1;
+  const val = parseFloat(match[1]);
+  const unit = match[2].toLowerCase();
+  if (unit === 'kg' || unit === 'l') return val * 1000;
+  return val; // g, gm, ml
+}
+
+// Calculates dynamic adjusted price based on selected pack size relative to base size
+function getAdjustedPrice(item, packSize) {
+  if (!item) return 0;
+  const basePrice = Number(item.price) || 0;
+  if (!packSize) return basePrice;
+
+  const baseSizeStr = getBaseSize(item.name);
+  if (!baseSizeStr) return basePrice;
+
+  const baseVal = parseSizeToGramsOrMl(baseSizeStr);
+  const targetVal = parseSizeToGramsOrMl(packSize);
+
+  if (baseVal <= 0 || targetVal <= 0) return basePrice;
+
+  return (basePrice * targetVal) / baseVal;
+}
 
 const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -43,8 +132,12 @@ const categoryImages = {
 };
 
 function getImageForItem(item) {
-  if (item.image_url) return item.image_url;
-  
+  if (item.image_url) {
+    if (item.image_url.startsWith('http')) return item.image_url;
+    const backendBase = import.meta.env.VITE_API_URL.replace('/api', '');
+    return `${backendBase}${item.image_url}`;
+  }
+
   const cat = (item.category || '').toLowerCase();
   if (cat.includes('pickle')) {
     return categoryImages.Pickle;
@@ -83,12 +176,12 @@ function ProductCard({ item, onSelect, disabled, delay = 0 }) {
       transition={{ duration: 0.4, delay, ease: [0.22, 1, 0.36, 1] }}
     >
       <div className="ai-product-img-container">
-        <img src={getImageForItem(item)} alt={item.name} className="ai-product-img" loading="lazy" />
+        <img src={getImageForItem(item)} alt={cleanName(item.name)} className="ai-product-img" loading="lazy" />
         <span className="ai-product-badge">Available</span>
       </div>
       <div className="ai-product-info">
         <span className="ai-product-category">{item.category}</span>
-        <h4 className="ai-product-title">{item.name}</h4>
+        <h4 className="ai-product-title">{cleanName(item.name)}</h4>
         <p className="ai-product-price">₹{Number(item.price).toFixed(2)}</p>
         <button className="ai-select-btn" onClick={() => onSelect(item)} disabled={disabled}>
           Select Item →
@@ -105,17 +198,17 @@ function MenuCarousel({ menuItems, onSelect, disabled }) {
 
   const getFilteredItems = () => {
     if (selectedFilter === 'All') return menuItems;
-    
+
     return menuItems.filter((item) => {
       const cat = (item.category || '').toLowerCase();
       const filter = selectedFilter.toLowerCase();
-      
+
       if (filter === 'pickles') return cat.includes('pickle');
       if (filter === 'sweets') return cat.includes('sweet') || cat.includes('laddu') || cat.includes('kajjikayalu');
       if (filter === 'snacks') return cat.includes('snack') || cat.includes('janthikalu') || cat.includes('chekkalu');
       if (filter === 'oils') return cat.includes('oil');
       if (filter === 'powders') return cat.includes('podi') || cat.includes('powder') || cat.includes('masala') || cat.includes('spice');
-      
+
       return false;
     });
   };
@@ -306,10 +399,20 @@ const InputBox = React.forwardRef(function InputBox(
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function CustomerChat() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [showSplash, setShowSplash] = useState(true);
   const handleSplashDone = useCallback(() => {
     setShowSplash(false);
   }, []);
+
+  React.useEffect(() => {
+    if (location.state?.openProfile) {
+      setShowDetailsModal(true);
+      // Clear the state so it doesn't reopen on page refresh
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, navigate]);
+
   const [videoFailed, setVideoFailed] = useState(false);
   const [isChatActive, setIsChatActive] = useState(false);
   const [inputText, setInputText] = useState('');
@@ -320,10 +423,13 @@ export default function CustomerChat() {
 
   const [currentStep, setCurrentStep] = useState(STEPS.IDLE);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [selectedPackSize, setSelectedPackSize] = useState(null);
   const [quantity, setQuantity] = useState(null);
   const [deliveryAddress, setDeliveryAddress] = useState('');
 
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [navDrawerOpen, setNavDrawerOpen] = useState(false);
   const [customerName, setCustomerName] = useState(() => {
     try {
       const cust = JSON.parse(localStorage.getItem('customer') || '{}');
@@ -343,6 +449,7 @@ export default function CustomerChat() {
   const [isPaymentInitiating, setIsPaymentInitiating] = useState(false);
 
   const messagesEndRef = useRef(null);
+  const messagesAreaRef = useRef(null);
   const inputRef = useRef(null);
   const interactionLocked = useRef(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -353,6 +460,23 @@ export default function CustomerChat() {
   }, []);
 
   const [isScrolled, setIsScrolled] = useState(false);
+
+  // Lock body scroll on chatbot page mount
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    const originalHeight = document.body.style.height;
+    const originalWidth = document.body.style.width;
+
+    document.body.style.overflow = 'hidden';
+    document.body.style.height = '100vh';
+    document.body.style.width = '100vw';
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.height = originalHeight;
+      document.body.style.width = originalWidth;
+    };
+  }, []);
 
   // Reset scroll state when transitioning modes
   useEffect(() => {
@@ -372,13 +496,60 @@ export default function CustomerChat() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const handleMessagesScroll = useCallback((e) => {
+  const handleMessagesScroll = (e) => {
     if (e.target.scrollTop > 20) {
       setIsScrolled(true);
     } else {
       setIsScrolled(false);
     }
+  };
+
+  // ── Sync local storage guest session on load ──
+  useEffect(() => {
+    const savedName = localStorage.getItem('ahf_customer_name');
+    const savedWhatsapp = localStorage.getItem('ahf_customer_whatsapp');
+    const savedAddress = localStorage.getItem('ahf_customer_address');
+    if (savedName) setCustomerName(savedName);
+    if (savedWhatsapp) setCustomerWhatsapp(savedWhatsapp);
+    if (savedAddress) setDeliveryAddress(savedAddress);
   }, []);
+
+  // Update localStorage when details change
+  useEffect(() => {
+    if (customerName) localStorage.setItem('ahf_customer_name', customerName);
+    if (customerWhatsapp) localStorage.setItem('ahf_customer_whatsapp', customerWhatsapp);
+    if (deliveryAddress) localStorage.setItem('ahf_customer_address', deliveryAddress);
+  }, [customerName, customerWhatsapp, deliveryAddress]);
+
+  // Clear chat if user request requires it
+  useEffect(() => {
+    if (location.state?.clearChat) {
+      setMessages([]);
+      setCurrentStep(STEPS.IDLE);
+      setSelectedItem(null);
+      setSelectedPackSize('');
+      setQuantity(1);
+      setIsChatActive(false);
+    }
+  }, [location.state?.clearChat]);
+
+  // Auto-open profile modal on redirect
+  useEffect(() => {
+    if (location.state?.openProfile) {
+      setShowDetailsModal(true);
+    }
+  }, [location.state?.openProfile]);
+
+  // Sync menu state count checker on mount
+  useEffect(() => {
+    if (menuItems.length > 0 && currentStep === STEPS.MENU) {
+      setMessages((prev) => {
+        // Prevent duplicate menu mounts on hot-reloading
+        if (prev.some(m => m.type === 'menu_carousel')) return prev;
+        return [...prev, createBotMessage({ type: 'menu_carousel', items: menuItems })];
+      });
+    }
+  }, [menuItems.length]);
 
   // ── Auto greeting ──
   useEffect(() => {
@@ -444,21 +615,103 @@ export default function CustomerChat() {
     if (interactionLocked.current) return;
     setLock(true);
     setSelectedItem(item);
+    setSelectedPackSize(null);
     setQuantity(null);
-    setCurrentStep(STEPS.QUANTITY);
-    setMessages((prev) => [...prev, createUserMessage(`I'll take ${item.name}`)]);
-    // Show a selected-item mini card + ask for quantity
-    await addBotMessage({
-      type: 'selected_item_card',
-      item,
-      text: `Excellent choice! 😊\n\nHow many quantities would you like to order?`,
-    }, 900);
+
+    // Parse pack sizes from DB field (comma-separated string)
+    const rawSizes = item.sizes || item.pack_sizes || item.packSizes || '';
+    const sizes = typeof rawSizes === 'string'
+      ? rawSizes.split(',').map(s => s.trim()).filter(Boolean)
+      : (Array.isArray(rawSizes) ? rawSizes : []);
+
+    setMessages((prev) => [...prev, createUserMessage(`I'll take ${cleanName(item.name)}`)]);
+
+    if (sizes.length > 0) {
+      setCurrentStep(STEPS.PACK_SIZE);
+      await addBotMessage({
+        type: 'selected_item_card',
+        item,
+        packSizes: sizes,
+        text: `Excellent choice! 😊\n\nPlease choose a pack size:`,
+      }, 900);
+    } else {
+      setCurrentStep(STEPS.QUANTITY);
+      await addBotMessage({
+        type: 'selected_item_card',
+        item,
+        quantities: [1, 2, 3, 4, 5],
+        text: `Excellent choice! 😊\n\nHow many would you like?`,
+      }, 900);
+    }
   }, [addBotMessage]);
+
+  // ── Pack size select ──
+  const handlePackSizeSelect = useCallback(async (packSize) => {
+    if (interactionLocked.current) return;
+    setLock(true);
+    setSelectedPackSize(packSize);
+    setCurrentStep(STEPS.QUANTITY);
+    setMessages((prev) => [...prev, createUserMessage(packSize)]);
+    await addBotMessage({
+      type: 'text',
+      text: `Great choice! **${packSize}** selected.\n\nHow many packs would you like?`,
+      quantities: [1, 2, 3, 4, 5],
+    }, 700);
+  }, [addBotMessage]);
+
+  // ── Reset order ──
+  const handleResetOrder = useCallback(async () => {
+    setShowResetConfirm(false);
+    setSelectedItem(null);
+    setSelectedPackSize(null);
+    setQuantity(null);
+    setDeliveryAddress('');
+    setCurrentStep(STEPS.MENU);
+    setIsChatActive(false);
+    setInputText('');
+    interactionLocked.current = false;
+    setIsLocked(false);
+    setIsTyping(false);
+    setMessages([]);
+    setTimeout(() => {
+      setMessages([
+        createBotMessage({
+          type: 'text',
+          text: '👋 Order has been reset successfully.\n\nHow can I help you today?',
+        })
+      ]);
+    }, 100);
+  }, []);
 
   // ── Core message processor ──
   const processMessage = useCallback(async (text) => {
     if (interactionLocked.current) return;
     setLock(true);
+
+    // ── PACK_SIZE step: accept typed pack size ──
+    if (currentStep === STEPS.PACK_SIZE) {
+      const trimmed = text.trim();
+      const rawSizes = selectedItem?.sizes || selectedItem?.pack_sizes || selectedItem?.packSizes || '';
+      const validSizes = typeof rawSizes === 'string'
+        ? rawSizes.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+      
+      const normalizedInput = trimmed.replace(/\s+/g, '').toLowerCase();
+      const validSizesNormalized = validSizes.map(s => s.replace(/\s+/g, '').toLowerCase());
+      
+      if (validSizesNormalized.length > 0 && !validSizesNormalized.includes(normalizedInput)) {
+        await addBotMessage({
+          type: 'text',
+          text: `⚠️ Please choose a valid pack size. (Available: ${validSizes.join(', ')})`,
+        }, 700);
+        return;
+      }
+      
+      const matchIdx = validSizesNormalized.indexOf(normalizedInput);
+      const chosenSize = matchIdx !== -1 ? validSizes[matchIdx] : trimmed;
+      await handlePackSizeSelect(chosenSize);
+      return;
+    }
 
     // ── QUANTITY step: validate and process ──
     if (currentStep === STEPS.QUANTITY) {
@@ -469,7 +722,7 @@ export default function CustomerChat() {
       if (!isValidNumber || parsed <= 0) {
         await addBotMessage({
           type: 'text',
-          text: '⚠️ Please enter a valid quantity.\n\nExamples: 1, 2, 3\n(Must be a whole number greater than 0)',
+          text: '⚠️ Please enter a valid number of packs.\n\nExamples: 1, 2, 3\n(Must be a whole number greater than 0)',
         }, 700);
         return;
       }
@@ -477,12 +730,15 @@ export default function CustomerChat() {
       // Valid quantity — store it
       const qty = parsed;
       setQuantity(qty);
-      const subtotal = Number(selectedItem.price) * qty;
+      const adjustedPrice = getAdjustedPrice(selectedItem, selectedPackSize);
+      const subtotal = adjustedPrice * qty;
 
       // Show subtotal confirmation card, then ask for address
       await addBotMessage({
         type: 'quantity_confirm',
         item: selectedItem,
+        packSize: selectedPackSize,
+        unitPrice: adjustedPrice,
         quantity: qty,
         subtotal,
       }, 800);
@@ -509,7 +765,8 @@ export default function CustomerChat() {
       }
 
       setDeliveryAddress(addr);
-      const subtotal = Number(selectedItem.price) * quantity;
+      const adjustedPrice = getAdjustedPrice(selectedItem, selectedPackSize);
+      const subtotal = adjustedPrice * quantity;
 
       // Transition to SUMMARY
       setCurrentStep(STEPS.SUMMARY);
@@ -518,6 +775,8 @@ export default function CustomerChat() {
       await addBotMessage({
         type: 'order_summary_card',
         item: selectedItem,
+        packSize: selectedPackSize,
+        unitPrice: adjustedPrice,
         quantity,
         subtotal,
         deliveryAddress: addr,
@@ -552,7 +811,7 @@ export default function CustomerChat() {
       type: 'text',
       text: 'I can help you order! Say "Hi" or "Show menu" to browse our freshly prepared items. 🫙',
     });
-  }, [currentStep, menuItems, isMenuLoading, selectedItem, quantity, addBotMessage, setLock]);
+  }, [currentStep, menuItems, isMenuLoading, selectedItem, selectedPackSize, quantity, addBotMessage, setLock, handlePackSizeSelect]);
 
   // ── Send ──
   const handleSend = useCallback(async (textOverride) => {
@@ -561,7 +820,7 @@ export default function CustomerChat() {
     if (!isChatActive) setIsChatActive(true);
     setMessages((prev) => [...prev, createUserMessage(text)]);
     setInputText('');
-    
+
     // Focus immediately after clearing text
     setTimeout(() => {
       inputRef.current?.focus();
@@ -579,6 +838,10 @@ export default function CustomerChat() {
     localStorage.setItem('ahf_customer_whatsapp', customerWhatsapp.trim());
 
     try {
+      const adjustedPrice = getAdjustedPrice(selectedItem, selectedPackSize);
+      const formattedItemName = cleanName(selectedItem.name) + (selectedPackSize ? ` (${selectedPackSize})` : '');
+      const totalAmount = adjustedPrice * quantity;
+
       // 1. Create database order (in Pending status)
       const orderRes = await fetch(`${API_BASE}/chat/order`, {
         method: 'POST',
@@ -589,12 +852,12 @@ export default function CustomerChat() {
           address: deliveryAddress,
           items: [
             {
-              name: selectedItem.name,
+              name: formattedItemName,
               quantity: quantity,
-              price: selectedItem.price
+              price: adjustedPrice
             }
           ],
-          total_amount: selectedItem.price * quantity
+          total_amount: totalAmount
         })
       });
 
@@ -618,12 +881,11 @@ export default function CustomerChat() {
       }, 500);
 
       // 2. Create Razorpay order
-      const subtotal = selectedItem.price * quantity;
       const paymentRes = await fetch(`${API_BASE}/payment/create-order`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: subtotal,
+          amount: totalAmount,
           orderId: dbOrderId
         })
       });
@@ -645,7 +907,7 @@ export default function CustomerChat() {
         amount: paymentData.amount,
         currency: paymentData.currency,
         name: 'Akshaya Homely Foods',
-        description: `Order #${dbOrderId} - ${quantity} x ${selectedItem.name}`,
+        description: `Order #${dbOrderId} - ${quantity} x ${formattedItemName}`,
         order_id: paymentData.razorpayOrderId,
         handler: async function (response) {
           // 4. On success: Update payment_status = PAID
@@ -661,7 +923,7 @@ export default function CustomerChat() {
             await addBotMessage({
               type: 'order_success_card',
               orderId: dbOrderId,
-              amountPaid: selectedItem.price * quantity,
+              amountPaid: totalAmount,
               estimatedTime: '30-45 Minutes',
               text: `Thank you, ${customerName.trim()}! Your payment has been received.\n\nWe will update you on WhatsApp at ${customerWhatsapp.trim()}!`,
             }, 1000);
@@ -775,7 +1037,23 @@ export default function CustomerChat() {
           <div className="bot-bubble">
             {/* Plain text */}
             {msg.type === 'text' && (
-              <p style={{ margin: 0, whiteSpace: 'pre-line' }}>{msg.text}</p>
+              <div>
+                <p style={{ margin: 0, whiteSpace: 'pre-line' }}>{msg.text}</p>
+                {msg.quantities && msg.quantities.length > 0 && currentStep === STEPS.QUANTITY && (
+                  <div className="quick-reply-wrapper">
+                    {msg.quantities.map((qty) => (
+                      <button
+                        key={qty}
+                        onClick={() => handleSend(String(qty))}
+                        disabled={isLocked}
+                        className="quick-reply-btn"
+                      >
+                        {qty}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Menu carousel */}
@@ -797,7 +1075,7 @@ export default function CustomerChat() {
                   </div>
                   <div className="sic-info">
                     <span className="sic-label">Selected Item</span>
-                    <h4 className="sic-name">{msg.item.name}</h4>
+                    <h4 className="sic-name">{cleanName(msg.item.name)}</h4>
                     <span className="sic-cat">{msg.item.category}</span>
                     <span className="sic-price">₹{Number(msg.item.price).toFixed(2)}</span>
                   </div>
@@ -805,6 +1083,36 @@ export default function CustomerChat() {
                 <p style={{ margin: '0.875rem 0 0', whiteSpace: 'pre-line', color: 'rgba(255,255,255,0.88)' }}>
                   {msg.text}
                 </p>
+                {/* Pack size quick-reply buttons */}
+                {msg.packSizes && msg.packSizes.length > 0 && currentStep === STEPS.PACK_SIZE && (
+                  <div className="quick-reply-wrapper">
+                    {msg.packSizes.map((sz) => (
+                      <button
+                        key={sz}
+                        onClick={() => handlePackSizeSelect(sz)}
+                        disabled={isLocked}
+                        className="quick-reply-btn"
+                      >
+                        {sz}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* Quantity quick-reply buttons */}
+                {msg.quantities && msg.quantities.length > 0 && currentStep === STEPS.QUANTITY && (
+                  <div className="quick-reply-wrapper">
+                    {msg.quantities.map((qty) => (
+                      <button
+                        key={qty}
+                        onClick={() => handleSend(String(qty))}
+                        disabled={isLocked}
+                        className="quick-reply-btn"
+                      >
+                        {qty}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -822,14 +1130,20 @@ export default function CustomerChat() {
                 </div>
                 <div className="qcc-row">
                   <span className="qcc-label">Item</span>
-                  <span className="qcc-value">{msg.item.name}</span>
+                  <span className="qcc-value">{cleanName(msg.item.name)}</span>
                 </div>
+                {msg.packSize && (
+                  <div className="qcc-row">
+                    <span className="qcc-label">Pack Size</span>
+                    <span className="qcc-value">{msg.packSize}</span>
+                  </div>
+                )}
                 <div className="qcc-row">
                   <span className="qcc-label">Unit Price</span>
-                  <span className="qcc-value">₹{Number(msg.item.price).toFixed(2)}</span>
+                  <span className="qcc-value">₹{Number(msg.unitPrice !== undefined ? msg.unitPrice : msg.item.price).toFixed(2)}</span>
                 </div>
                 <div className="qcc-row">
-                  <span className="qcc-label">Quantity</span>
+                  <span className="qcc-label">Packs</span>
                   <span className="qcc-value">{msg.quantity}</span>
                 </div>
                 <div className="qcc-divider" />
@@ -859,18 +1173,28 @@ export default function CustomerChat() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', textAlign: 'left' }}>
                       <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'rgba(249,115,22,0.8)', fontWeight: '700', letterSpacing: '0.05em' }}>{msg.item.category}</span>
-                      <h4 style={{ margin: '0', fontSize: '0.95rem', fontWeight: '700', color: 'white' }}>{msg.item.name}</h4>
-                      <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>₹{Number(msg.item.price).toFixed(2)} each</span>
+                      <h4 style={{ margin: '0', fontSize: '0.95rem', fontWeight: '700', color: 'white' }}>{cleanName(msg.item.name)}</h4>
+                      <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
+                        ₹{(msg.unitPrice !== undefined ? msg.unitPrice : Number(msg.item.price)).toFixed(2)} each
+                      </span>
                     </div>
                   </div>
                   <div className="osc-divider" />
+                  {msg.packSize && (
+                    <div className="osc-row">
+                      <span className="osc-label">Pack Size</span>
+                      <span className="osc-value">{msg.packSize}</span>
+                    </div>
+                  )}
                   <div className="osc-row">
                     <span className="osc-label">Quantity</span>
-                    <span className="osc-value">{msg.quantity}</span>
+                    <span className="osc-value">{msg.quantity} {msg.quantity === 1 ? 'Pack' : 'Packs'}</span>
                   </div>
                   <div className="osc-row">
-                    <span className="osc-label">Subtotal</span>
-                    <span className="osc-value osc-highlight">₹{msg.subtotal.toFixed(2)}</span>
+                    <span className="osc-label">Total</span>
+                    <span className="osc-value osc-highlight">
+                      ₹{msg.subtotal % 1 === 0 ? msg.subtotal.toFixed(0) : msg.subtotal.toFixed(2)}
+                    </span>
                   </div>
                   <div className="osc-divider" />
                   <div className="osc-address-section" style={{ textAlign: 'left' }}>
@@ -917,7 +1241,7 @@ export default function CustomerChat() {
                   </svg>
                   <h3 style={{ color: '#4ade80', margin: '0.5rem 0 0 0', fontWeight: '800', fontSize: '1.25rem', letterSpacing: '-0.01em' }}>Payment Successful!</h3>
                 </div>
-                
+
                 <div className="osc-body" style={{ padding: '0 0 0.5rem 0' }}>
                   <div className="osc-divider" style={{ background: 'rgba(34, 197, 94, 0.15)' }} />
                   <div className="osc-row">
@@ -938,7 +1262,7 @@ export default function CustomerChat() {
                   <p style={{ margin: '0.875rem 1.25rem', fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.7)', textAlign: 'center', lineHeight: '1.5' }}>
                     {msg.text}
                   </p>
-                  
+
                   <div style={{ padding: '0.5rem 1.25rem 1rem' }}>
                     <a
                       href={`/track/${msg.orderId}`}
@@ -1037,6 +1361,7 @@ export default function CustomerChat() {
           >
             {/* LEFT: Logo + Brand */}
             <div
+              className="navbar-brand-container"
               style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', flexShrink: 0 }}
               onClick={() => navigate('/')}
             >
@@ -1045,13 +1370,13 @@ export default function CustomerChat() {
                 alt="Akshaya Homely Foods"
                 style={{ height: '38px', width: '38px', objectFit: 'contain', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', padding: '4px' }}
               />
-              <span style={{ color: 'white', fontWeight: '700', fontSize: '1rem', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
+              <span className="navbar-brand-text" style={{ color: 'white', fontWeight: '700', fontSize: '1rem', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
                 Akshaya Homely Foods
               </span>
             </div>
 
-            {/* CENTER: Nav Links */}
-            <nav style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
+            {/* CENTER: Nav Links (desktop only) */}
+            <nav className="navbar-desktop-links" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
               {[
                 { label: 'Home', action: () => navigate('/') },
                 { label: 'My Orders', action: () => navigate('/my-orders') },
@@ -1082,31 +1407,35 @@ export default function CustomerChat() {
               ))}
             </nav>
 
-            {/* RIGHT: New Order (chat mode only) + Customer Info + Logout */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
-              {/* New Order button — only visible while chatting */}
+            {/* MOBILE: Hamburger button */}
+            <button
+              className="navbar-hamburger"
+              onClick={() => setNavDrawerOpen(true)}
+              aria-label="Open menu"
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'white', padding: '0.4rem', display: 'none',
+              }}
+            >
+              <MenuIcon size={22} />
+            </button>
+
+            {/* RIGHT: Buttons (desktop) */}
+            <div className="navbar-right-desktop" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+              {/* Reset Order button — only visible while chatting */}
               {isChatActive && (
                 <motion.button
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9 }}
-                  onClick={() => {
-                    setIsChatActive(false);
-                    setMessages([]);
-                    setInputText('');
-                    setCurrentStep(STEPS.IDLE);
-                    setSelectedItem(null);
-                    setQuantity(null);
-                    setDeliveryAddress('');
-                    interactionLocked.current = false;
-                  }}
+                  onClick={() => setShowResetConfirm(true)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '6px',
                     padding: '0.45rem 1rem',
                     borderRadius: '50px',
-                    border: '1.5px solid rgba(255,255,255,0.2)',
-                    background: 'rgba(255,255,255,0.08)',
-                    color: 'rgba(255,255,255,0.9)',
+                    border: '1.5px solid rgba(251,146,60,0.4)',
+                    background: 'rgba(249,115,22,0.1)',
+                    color: '#fb923c',
                     fontWeight: '600',
                     fontSize: '0.8rem',
                     cursor: 'pointer',
@@ -1114,16 +1443,16 @@ export default function CustomerChat() {
                     fontFamily: 'inherit',
                     whiteSpace: 'nowrap',
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(249,115,22,0.22)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(249,115,22,0.1)'; }}
                 >
-                  <Plus size={13} strokeWidth={2.5} />
-                  New Order
+                  <RotateCcw size={13} strokeWidth={2.5} />
+                  Reset Order
                 </motion.button>
               )}
 
               {customerName && (
-                <div style={{
+                <div className="navbar-customer-badge" style={{
                   display: 'flex', alignItems: 'center', gap: '0.5rem',
                   background: 'rgba(255,255,255,0.07)',
                   border: '1px solid rgba(255,255,255,0.1)',
@@ -1168,6 +1497,75 @@ export default function CustomerChat() {
               </motion.button>
             </div>
           </motion.header>
+
+          {/* ── MOBILE NAV DRAWER ── */}
+          <AnimatePresence>
+            {navDrawerOpen && (
+              <>
+                <motion.div
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  onClick={() => setNavDrawerOpen(false)}
+                  style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 199, backdropFilter: 'blur(4px)' }}
+                />
+                <motion.div
+                  initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
+                  transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+                  style={{
+                    position: 'fixed', top: 0, left: 0, bottom: 0, width: '75vw', maxWidth: '300px',
+                    background: 'rgba(15,15,26,0.98)', zIndex: 200, backdropFilter: 'blur(20px)',
+                    display: 'flex', flexDirection: 'column', padding: '1.5rem 1.25rem',
+                    borderRight: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                    <span style={{ color: 'white', fontWeight: '700', fontSize: '1.1rem' }}>Menu</span>
+                    <button onClick={() => setNavDrawerOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', padding: '0.25rem' }}>
+                      <XIcon size={20} />
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {[
+                      { label: 'Home', action: () => { navigate('/'); setNavDrawerOpen(false); } },
+                      { label: 'My Orders', action: () => { navigate('/my-orders'); setNavDrawerOpen(false); } },
+                      { label: 'Track Order', action: () => { navigate('/order-tracking'); setNavDrawerOpen(false); } },
+                      { label: 'AI Chat', action: () => { setIsChatActive(false); setMessages([]); setCurrentStep(STEPS.IDLE); setNavDrawerOpen(false); } },
+                      { label: 'Profile', action: () => { setShowDetailsModal(true); setNavDrawerOpen(false); } },
+                    ].map((item) => (
+                      <button
+                        key={item.label}
+                        onClick={item.action}
+                        className="mobile-drawer-btn"
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {isChatActive && (
+                      <button onClick={() => { setShowResetConfirm(true); setNavDrawerOpen(false); }} style={{
+                        display: 'flex', alignItems: 'center', gap: '8px', padding: '0.7rem 1rem',
+                        borderRadius: '50px', border: '1.5px solid rgba(251,146,60,0.4)',
+                        background: 'rgba(249,115,22,0.1)', color: '#fb923c',
+                        fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit',
+                      }}><RotateCcw size={14} /> Reset Order</button>
+                    )}
+                    {customerName && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.05)', borderRadius: '10px' }}>
+                        <User size={14} color="#fb923c" />
+                        <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.85rem', fontWeight: '600' }}>{customerName}</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => { handleLogout(); setNavDrawerOpen(false); }}
+                      className="mobile-drawer-logout-btn"
+                    >
+                      <LogOut size={14} /> Logout
+                    </button>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
 
           <AnimatePresence mode="wait">
             {/* ── HERO MODE ── */}
@@ -1288,7 +1686,7 @@ export default function CustomerChat() {
               >
                 {/* NO sub-header here — navigation is handled entirely by the main sticky navbar above */}
 
-                <main className="messages-area" onScroll={handleMessagesScroll}>
+                <main ref={messagesAreaRef} className="messages-area" onScroll={handleMessagesScroll}>
                   {messages.map((msg) => (
                     <motion.div
                       key={msg.id}
@@ -1385,6 +1783,64 @@ export default function CustomerChat() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── RESET ORDER CONFIRMATION MODAL ── */}
+      {showResetConfirm && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '1rem',
+        }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+              background: 'rgba(20,20,35,0.98)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '1.25rem',
+              padding: '2rem 1.75rem',
+              maxWidth: '380px', width: '100%',
+              boxShadow: '0 30px 60px rgba(0,0,0,0.5)',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🔄</div>
+            <h3 style={{ color: 'white', fontWeight: '800', fontSize: '1.15rem', margin: '0 0 0.5rem' }}>Reset current order?</h3>
+            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.88rem', lineHeight: '1.55', margin: '0 0 1.5rem' }}>
+              This will remove all selected items and restart the conversation.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                style={{
+                  flex: 1, padding: '0.75rem',
+                  borderRadius: '0.75rem',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  background: 'rgba(255,255,255,0.07)',
+                  color: 'rgba(255,255,255,0.75)',
+                  fontWeight: '600', fontSize: '0.9rem',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >Cancel</button>
+              <button
+                onClick={handleResetOrder}
+                style={{
+                  flex: 1, padding: '0.75rem',
+                  borderRadius: '0.75rem',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                  color: 'white',
+                  fontWeight: '700', fontSize: '0.9rem',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  boxShadow: '0 4px 15px rgba(249,115,22,0.35)',
+                }}
+              >Reset Order</button>
+            </div>
+          </motion.div>
         </div>
       )}
     </>

@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { fetchSummaryToday } from '../utils/api';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/Topbar';
+import { cleanProductName } from '../utils/format';
 
 export default function Summary() {
   const { data, isLoading, isError } = useQuery({
@@ -140,11 +141,15 @@ export default function Summary() {
                       <td style={{ fontWeight: '700' }}>#{order.id}</td>
                       <td style={{ fontWeight: '500' }}>{order.customer.name}</td>
                       <td>
-                        {order.items.map((item, i) => (
-                          <span key={i} style={{ fontSize: '0.8rem', marginRight: '0.75rem', background: '#F1EFEF', padding: '2px 6px', borderRadius: '4px' }}>
-                            {item.name} (x{item.quantity})
-                          </span>
-                        ))}
+                        {order.items.map((item, i) => {
+                          const qtyStr = String(item.quantity).toLowerCase();
+                          const isWeight = qtyStr.includes('g') || qtyStr.includes('kg');
+                          return (
+                            <span key={i} style={{ fontSize: '0.8rem', marginRight: '0.75rem', background: '#F1EFEF', padding: '2px 6px', borderRadius: '4px' }}>
+                              {cleanProductName(item.name)} ({isWeight ? '' : 'x'}{item.quantity})
+                            </span>
+                          );
+                        })}
                       </td>
                       <td style={{ fontWeight: '700', color: 'var(--primary)' }}>₹{order.total_amount}</td>
                       <td>

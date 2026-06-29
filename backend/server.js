@@ -4,6 +4,8 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 const prisma = require('./db');
 
+const path = require('path');
+
 const authRoutes = require('./routes/auth');
 const orderRoutes = require('./routes/orders');
 const menuRoutes = require('./routes/menu');
@@ -12,24 +14,35 @@ const whatsappRoutes = require('./routes/whatsapp');
 const paymentRoutes = require('./routes/payment');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // Enable CORS for frontend requests
-const frontendUrl = process.env.FRONTEND_URL;
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 app.use(cors({
-  origin: frontendUrl ? [frontendUrl, 'http://localhost:5173'] : '*',
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (/^http:\/\/localhost(:\d+)?$/.test(origin) || origin === frontendUrl) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
 
-// Parse JSON request bodies
-app.use(express.json());
+// Parse JSON request bodies (up to 10MB for base64 images)
+app.use(express.json({ limit: '10mb' }));
+
+// Serve uploaded static files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+const rateLimiter = require('./middleware/rateLimiter');
 
 // Mount API route handlers
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/menu', menuRoutes);
-app.use('/api/chat', chatRoutes);
-app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/chat', rateLimiter, chatRoutes);
+app.use('/api/whatsapp', rateLimiter, whatsappRoutes);
 app.use('/api/payment', paymentRoutes);
 
 // Health check endpoint

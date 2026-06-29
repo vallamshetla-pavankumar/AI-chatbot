@@ -92,3 +92,10 @@ export async function deleteMenuItem(itemId) {
     method: 'DELETE',
   });
 }
+
+export async function uploadMenuItemImage(name, base64Image) {
+  return request('/menu/upload', {
+    method: 'POST',
+    body: JSON.stringify({ name, image: base64Image }),
+  });
+}

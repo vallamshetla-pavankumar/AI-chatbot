@@ -4,9 +4,17 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
-import { fetchMenu, createMenuItem, updateMenuItem, deleteMenuItem } from '../utils/api';
+import { fetchMenu, createMenuItem, updateMenuItem, deleteMenuItem, uploadMenuItemImage } from '../utils/api';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/Topbar';
+import { cleanProductName } from '../utils/format';
+
+const getImageUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  const backendBase = import.meta.env.VITE_API_URL.replace('/api', '');
+  return `${backendBase}${url}`;
+};
 
 const categories = [
   'Veg Pickles',
@@ -33,6 +41,8 @@ const menuItemSchema = z.object({
     }),
   is_available: z.boolean().default(true),
   image_url: z.string().optional().or(z.literal('')),
+  unitType: z.string().default('WEIGHT'),
+  sizes: z.string().optional(),
 });
 
 export default function MenuManagement() {
@@ -40,6 +50,8 @@ export default function MenuManagement() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null); // null means adding new item
+  const [uploading, setUploading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
 
   const { data: menuItems = [], isLoading, isError } = useQuery({
     queryKey: ['menu'],
@@ -59,6 +71,8 @@ export default function MenuManagement() {
       category: categories[0],
       price: '',
       is_available: true,
+      unitType: 'WEIGHT',
+      sizes: '250g,500g,750g,1Kg,2Kg,5Kg',
     },
   });
 
@@ -117,31 +131,37 @@ export default function MenuManagement() {
   };
 
   const handleDelete = (id, name) => {
-    if (window.confirm(`Are you sure you want to delete "${name}"?`)) {
+    if (window.confirm(`Are you sure you want to delete "${cleanProductName(name)}"?`)) {
       deleteMutation.mutate(id);
     }
   };
 
   const openAddModal = () => {
     setEditingItem(null);
+    setPreviewUrl('');
     reset({
       name: '',
       category: categories[0],
       price: '',
       is_available: true,
       image_url: '',
+      unitType: 'WEIGHT',
+      sizes: '250g,500g,750g,1Kg,2Kg,5Kg',
     });
     setModalOpen(true);
   };
 
   const openEditModal = (item) => {
     setEditingItem(item);
+    setPreviewUrl(item.image_url || '');
     reset({
       name: item.name,
       category: item.category,
       price: item.price.toString(),
       is_available: item.is_available,
       image_url: item.image_url || '',
+      unitType: item.unitType || 'PIECE',
+      sizes: item.sizes || '',
     });
     setModalOpen(true);
   };
@@ -149,6 +169,42 @@ export default function MenuManagement() {
   const closeModal = () => {
     setModalOpen(false);
     setEditingItem(null);
+    setPreviewUrl('');
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.match(/image\/(png|jpeg|jpg|webp)/)) {
+      toast.error('Only png, jpeg, jpg, and webp images are allowed');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64Data = reader.result;
+      setUploading(true);
+      const loadingToast = toast.loading('Uploading image...');
+      try {
+        const res = await uploadMenuItemImage(file.name, base64Data);
+        setValue('image_url', res.url);
+        setPreviewUrl(res.url);
+        toast.success('Image uploaded successfully', { id: loadingToast });
+      } catch (err) {
+        toast.error(err.message || 'Image upload failed', { id: loadingToast });
+      } finally {
+        setUploading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = () => {
+    setValue('image_url', '');
+    setPreviewUrl('');
+    const fileInput = document.getElementById('image-file-input');
+    if (fileInput) fileInput.value = '';
   };
 
   const onSubmit = (data) => {
@@ -222,7 +278,7 @@ export default function MenuManagement() {
               <div key={item.id} className="card menu-card" style={{ opacity: item.is_available ? 1 : 0.7, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 {item.image_url ? (
                   <div style={{ width: '100%', height: '140px', overflow: 'hidden' }}>
-                    <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={getImageUrl(item.image_url)} alt={cleanProductName(item.name)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                 ) : (
                   <div style={{ width: '100%', height: '140px', overflow: 'hidden', background: '#F5EFEB', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontSize: '2rem' }}>
@@ -232,7 +288,7 @@ export default function MenuManagement() {
                 <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
                   <div className="menu-card-header">
                     <div>
-                      <h4 className="menu-item-name" style={{ margin: 0 }}>{item.name}</h4>
+                      <h4 className="menu-item-name" style={{ margin: 0 }}>{cleanProductName(item.name)}</h4>
                       <span className="menu-item-category">{item.category}</span>
                     </div>
                     <span className="menu-item-price">₹{item.price}</span>
@@ -329,13 +385,76 @@ export default function MenuManagement() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Image URL (Optional)</label>
+                    <label className="form-label">Unit Type</label>
+                    <select className="form-select" {...register('unitType')}>
+                      <option value="WEIGHT">Weight/Volume basis (WEIGHT)</option>
+                      <option value="PIECE">Piece basis (PIECE)</option>
+                    </select>
+                    {errors.unitType && <span className="form-error">{errors.unitType.message}</span>}
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Available Package Sizes (Comma-separated)</label>
                     <input
-                      type="url"
+                      type="text"
                       className="form-input"
-                      placeholder="e.g. https://images.unsplash.com/..."
-                      {...register('image_url')}
+                      placeholder="e.g. 100g,250g,500g,750g,1Kg,2Kg,5Kg"
+                      {...register('sizes')}
                     />
+                    <span className="form-hint" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Leave empty for direct piece-based selection.
+                    </span>
+                    {errors.sizes && <span className="form-error">{errors.sizes.message}</span>}
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Product Image</label>
+                    <input type="hidden" {...register('image_url')} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => document.getElementById('image-file-input').click()}
+                          style={{ minHeight: '44px' }}
+                        >
+                          Choose Image
+                        </button>
+                        <input
+                          id="image-file-input"
+                          type="file"
+                          accept="image/png, image/jpeg, image/jpg, image/webp"
+                          style={{ display: 'none' }}
+                          onChange={handleFileChange}
+                        />
+                        {uploading && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Uploading...</span>}
+                      </div>
+
+                      {previewUrl && (
+                        <div style={{ position: 'relative', width: '120px', height: '120px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--surface-border)' }}>
+                          <img
+                            src={getImageUrl(previewUrl)}
+                            alt="Uploaded Preview"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={handleRemoveImage}
+                            style={{
+                              position: 'absolute', top: '4px', right: '4px',
+                              background: 'rgba(220, 38, 38, 0.85)', color: 'white',
+                              border: 'none', borderRadius: '50%',
+                              width: '20px', height: '20px',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              cursor: 'pointer', fontSize: '10px', fontWeight: 'bold'
+                            }}
+                            title="Remove image"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     {errors.image_url && <span className="form-error">{errors.image_url.message}</span>}
                   </div>
 

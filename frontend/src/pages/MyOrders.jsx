@@ -3,12 +3,66 @@ import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShoppingBag, ArrowLeft, LogOut, MessageSquare, Loader2, Calendar, MapPin, CheckCircle } from 'lucide-react';
 import './CustomerChat.css';
+import { cleanProductName } from '../utils/format';
+
+function getPackSizeFactor(sizeStr) {
+  if (!sizeStr) return 1.0;
+  const clean = sizeStr.toLowerCase().replace(/\s+/g, '');
+  if (clean.endsWith('ml')) {
+    const val = parseFloat(clean.replace('ml', ''));
+    return isNaN(val) ? 1.0 : val / 1000;
+  }
+  if (clean.endsWith('g')) {
+    const val = parseFloat(clean.replace('g', ''));
+    return isNaN(val) ? 1.0 : val / 1000;
+  }
+  if (clean.endsWith('kg')) {
+    const val = parseFloat(clean.replace('kg', ''));
+    return isNaN(val) ? 1.0 : val;
+  }
+  if (clean.endsWith('l')) {
+    const val = parseFloat(clean.replace('l', ''));
+    return isNaN(val) ? 1.0 : val;
+  }
+  const val = parseFloat(clean);
+  return isNaN(val) ? 1.0 : val;
+}
+
+function getItemTotal(price, qty) {
+  if (qty === null || qty === undefined) return 0;
+  const qtyStr = String(qty).toLowerCase();
+  
+  let qtyNum = 1;
+  const packsMatch = qtyStr.match(/^(\d+)\s*pack/i);
+  if (packsMatch) {
+    qtyNum = parseInt(packsMatch[1], 10) || 1;
+  } else {
+    const parsed = parseInt(qtyStr, 10);
+    qtyNum = isNaN(parsed) ? 1 : parsed;
+  }
+
+  let finalSize = '';
+  const parenMatch = qtyStr.match(/\(([^)]+)\)/);
+  if (parenMatch) {
+    finalSize = parenMatch[1];
+  } else if (qtyStr.includes('g') || qtyStr.includes('kg') || qtyStr.includes('ml') || qtyStr.includes('l')) {
+    finalSize = qtyStr;
+  }
+
+  if (!finalSize) {
+    return price * qtyNum;
+  }
+
+  const factor = getPackSizeFactor(finalSize);
+  return price * factor * qtyNum;
+}
 
 export default function MyOrders() {
   const navigate = useNavigate();
   const [videoFailed, setVideoFailed] = useState(false);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -78,7 +132,8 @@ export default function MyOrders() {
           Akshaya Homely Foods
         </div>
 
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+        {/* Desktop Links */}
+        <nav className="desktop-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
           <Link to="/" style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', fontWeight: '500', fontSize: '0.9rem' }}>Home</Link>
           <Link to="/my-orders" style={{ color: 'rgba(255,255,255,0.7)', textDecoration: 'none', fontWeight: '500', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
             My Orders
@@ -90,6 +145,111 @@ export default function MyOrders() {
             <LogOut size={14} /> Logout
           </button>
         </nav>
+
+        {/* Mobile Hamburger Toggle */}
+        <button
+          className="mobile-hamburger-btn"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'white',
+            cursor: 'pointer',
+            padding: '0.5rem',
+            
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {mobileMenuOpen ? (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          ) : (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          )}
+        </button>
+
+        {/* Mobile Nav Drawer Overlay */}
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <>
+              {/* Overlay */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  background: 'rgba(0,0,0,0.55)',
+                  zIndex: 999,
+                  backdropFilter: 'blur(4px)',
+                  WebkitBackdropFilter: 'blur(4px)',
+                }}
+              />
+              {/* Drawer Container */}
+              <motion.div
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  width: '75vw',
+                  maxWidth: '300px',
+                  background: 'rgba(15,15,26,0.98)',
+                  zIndex: 1000,
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  padding: '1.5rem 1.25rem',
+                  borderRight: '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                  <span style={{ color: 'white', fontWeight: '700', fontSize: '1.1rem' }}>Menu</span>
+                  <button
+                    onClick={() => setMobileMenuOpen(false)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', padding: '0.25rem' }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <button onClick={() => { navigate('/'); setMobileMenuOpen(false); }} className="mobile-drawer-btn">Home</button>
+                  <button onClick={() => { navigate('/my-orders'); setMobileMenuOpen(false); }} className="mobile-drawer-btn">My Orders</button>
+                  <button onClick={() => { navigate('/order-tracking'); setMobileMenuOpen(false); }} className="mobile-drawer-btn">Track Order</button>
+                  <button onClick={() => { navigate('/chat'); setMobileMenuOpen(false); }} className="mobile-drawer-btn">AI Chat</button>
+                  <button onClick={() => { navigate('/chat', { state: { openProfile: true } }); setMobileMenuOpen(false); }} className="mobile-drawer-btn">Profile</button>
+                </div>
+
+                <div style={{ marginTop: 'auto' }}>
+                  <button
+                    onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
+                    className="mobile-drawer-logout-btn"
+                  >
+                    Logout
+                  </button>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
       </header>
 
       {/* ── MAIN CONTENT ── */}
@@ -192,14 +352,18 @@ export default function MyOrders() {
                 {/* Body */}
                 <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                   <div className="items-list-container">
-                    {order.items.map((item, i) => (
-                      <div key={i} className="item-tracking-row" style={{ fontSize: '0.9rem' }}>
-                        <span style={{ color: 'rgba(255,255,255,0.85)' }}>
-                          • {item.name} <strong style={{ color: 'white' }}>x{item.quantity}</strong>
-                        </span>
-                        <span style={{ color: '#fb923c', fontWeight: '600' }}>₹{(item.price * item.quantity).toFixed(2)}</span>
-                      </div>
-                    ))}
+                    {order.items.map((item, i) => {
+                      const qtyStr = String(item.quantity).toLowerCase();
+                      const isWeight = qtyStr.includes('g') || qtyStr.includes('kg') || qtyStr.includes('ml') || qtyStr.includes('l');
+                      return (
+                        <div key={i} className="item-tracking-row" style={{ fontSize: '0.9rem' }}>
+                          <span style={{ color: 'rgba(255,255,255,0.85)' }}>
+                            • {cleanProductName(item.name)} <strong style={{ color: 'white' }}>{isWeight ? '' : 'x'}{item.quantity}</strong>
+                          </span>
+                          <span style={{ color: '#fb923c', fontWeight: '600' }}>₹{getItemTotal(item.price, item.quantity).toFixed(2)}</span>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)' }} />
@@ -239,3 +403,4 @@ export default function MyOrders() {
     </div>
   );
 }
+
