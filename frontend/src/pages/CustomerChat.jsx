@@ -131,11 +131,22 @@ const categoryImages = {
   Default: 'https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=400&h=280&fit=crop',
 };
 
+const handleImageError = (e) => {
+  e.target.onerror = null;
+  e.target.src = categoryImages.Default;
+};
+
 function getImageForItem(item) {
+  if (!item) return categoryImages.Default;
   if (item.image_url) {
-    if (item.image_url.startsWith('http')) return item.image_url;
-    const backendBase = import.meta.env.VITE_API_URL.replace('/api', '');
-    return `${backendBase}${item.image_url}`;
+    if (item.image_url.startsWith('http://') || item.image_url.startsWith('https://') || item.image_url.startsWith('data:')) {
+      return item.image_url;
+    }
+    let baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+    baseUrl = baseUrl.replace(/\/api\/?$/, '');
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    const cleanPath = item.image_url.startsWith('/') ? item.image_url : `/${item.image_url}`;
+    return `${cleanBase}${cleanPath}`;
   }
 
   const cat = (item.category || '').toLowerCase();
@@ -176,7 +187,7 @@ function ProductCard({ item, onSelect, disabled, delay = 0 }) {
       transition={{ duration: 0.4, delay, ease: [0.22, 1, 0.36, 1] }}
     >
       <div className="ai-product-img-container">
-        <img src={getImageForItem(item)} alt={cleanName(item.name)} className="ai-product-img" loading="lazy" />
+        <img src={getImageForItem(item)} alt={cleanName(item.name)} className="ai-product-img" loading="lazy" onError={handleImageError} />
         <span className="ai-product-badge">Available</span>
       </div>
       <div className="ai-product-info">
@@ -1071,7 +1082,7 @@ export default function CustomerChat() {
                   transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 >
                   <div className="sic-image">
-                    <img src={getImageForItem(msg.item)} alt={msg.item.name} />
+                    <img src={getImageForItem(msg.item)} alt={msg.item.name} onError={handleImageError} />
                   </div>
                   <div className="sic-info">
                     <span className="sic-label">Selected Item</span>
@@ -1169,7 +1180,7 @@ export default function CustomerChat() {
                 <div className="osc-body">
                   <div className="osc-item-preview" style={{ display: 'flex', gap: '1rem', padding: '1rem 1.25rem', alignItems: 'center' }}>
                     <div style={{ width: '60px', height: '60px', borderRadius: '0.5rem', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)' }}>
-                      <img src={getImageForItem(msg.item)} alt={msg.item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={getImageForItem(msg.item)} alt={msg.item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={handleImageError} />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', textAlign: 'left' }}>
                       <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'rgba(249,115,22,0.8)', fontWeight: '700', letterSpacing: '0.05em' }}>{msg.item.category}</span>

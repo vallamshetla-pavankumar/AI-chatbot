@@ -9,11 +9,21 @@ import Sidebar from '../components/Sidebar';
 import Topbar from '../components/Topbar';
 import { cleanProductName } from '../utils/format';
 
+const handleImageError = (e) => {
+  e.target.onerror = null;
+  e.target.src = 'https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=400&h=280&fit=crop';
+};
+
 const getImageUrl = (url) => {
   if (!url) return '';
-  if (url.startsWith('http')) return url;
-  const backendBase = import.meta.env.VITE_API_URL.replace('/api', '');
-  return `${backendBase}${url}`;
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  let baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  baseUrl = baseUrl.replace(/\/api\/?$/, '');
+  const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  const cleanPath = url.startsWith('/') ? url : `/${url}`;
+  return `${cleanBase}${cleanPath}`;
 };
 
 const categories = [
@@ -182,20 +192,11 @@ export default function MenuManagement() {
     }
 
     const reader = new FileReader();
-    reader.onload = async () => {
+    reader.onload = () => {
       const base64Data = reader.result;
-      setUploading(true);
-      const loadingToast = toast.loading('Uploading image...');
-      try {
-        const res = await uploadMenuItemImage(file.name, base64Data);
-        setValue('image_url', res.url);
-        setPreviewUrl(res.url);
-        toast.success('Image uploaded successfully', { id: loadingToast });
-      } catch (err) {
-        toast.error(err.message || 'Image upload failed', { id: loadingToast });
-      } finally {
-        setUploading(false);
-      }
+      setValue('image_url', base64Data);
+      setPreviewUrl(base64Data);
+      toast.success('Image loaded (will be saved to database)');
     };
     reader.readAsDataURL(file);
   };
@@ -278,7 +279,7 @@ export default function MenuManagement() {
               <div key={item.id} className="card menu-card" style={{ opacity: item.is_available ? 1 : 0.7, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 {item.image_url ? (
                   <div style={{ width: '100%', height: '140px', overflow: 'hidden' }}>
-                    <img src={getImageUrl(item.image_url)} alt={cleanProductName(item.name)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={getImageUrl(item.image_url)} alt={cleanProductName(item.name)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={handleImageError} />
                   </div>
                 ) : (
                   <div style={{ width: '100%', height: '140px', overflow: 'hidden', background: '#F5EFEB', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontSize: '2rem' }}>
@@ -436,6 +437,7 @@ export default function MenuManagement() {
                             src={getImageUrl(previewUrl)}
                             alt="Uploaded Preview"
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={handleImageError}
                           />
                           <button
                             type="button"

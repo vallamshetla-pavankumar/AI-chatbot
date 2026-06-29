@@ -10,7 +10,7 @@ function authenticateToken(req, res, next) {
   }
 
   jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_hash_key_123_456', (err, decoded) => {
-    if (err) {
+    if (err || !decoded || decoded.role !== 'admin') {
       return res.status(403).json({ error: 'Invalid or expired access token' });
     }
     req.admin = decoded;

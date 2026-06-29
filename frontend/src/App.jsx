@@ -28,7 +28,14 @@ const queryClient = new QueryClient({
 // — pressing Back after logout goes to Landing/Login, not back to dashboard.
 function AdminProtectedRoute({ children }) {
   const token = localStorage.getItem('admin_token');
+  const customerToken = localStorage.getItem('customer_token');
+
   if (!token) {
+    if (customerToken) {
+      // Authenticated but not an Admin -> Redirect to Customer Chat page
+      return <Navigate to="/chat" replace />;
+    }
+    // Not authenticated -> Redirect to Login
     return <Navigate to="/login" replace />;
   }
   return children;
@@ -46,8 +53,12 @@ function CustomerProtectedRoute({ children }) {
 // Fallback logic
 function FallbackRoute() {
   const adminToken = localStorage.getItem('admin_token');
+  const customerToken = localStorage.getItem('customer_token');
   if (adminToken) {
     return <Navigate to="/orders" replace />;
+  }
+  if (customerToken) {
+    return <Navigate to="/chat" replace />;
   }
   return <Navigate to="/" replace />;
 }
@@ -126,6 +137,30 @@ export default function App() {
             element={
               <AdminProtectedRoute>
                 <MenuManagement />
+              </AdminProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <AdminProtectedRoute>
+                <Navigate to="/orders" replace />
+              </AdminProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <AdminProtectedRoute>
+                <Navigate to="/orders" replace />
+              </AdminProtectedRoute>
+            }
+          />
+          <Route
+            path="/daily-summary"
+            element={
+              <AdminProtectedRoute>
+                <Navigate to="/summary" replace />
               </AdminProtectedRoute>
             }
           />
