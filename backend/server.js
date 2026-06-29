@@ -29,7 +29,6 @@ async function checkAndSeedDatabase() {
     console.error('[STARTUP] Failed to check or seed database:', err);
   }
 }
-checkAndSeedDatabase();
 
 
 
@@ -116,5 +115,6 @@ async function ensureDefaultAdmin() {
 // Start the server
 app.listen(PORT, async () => {
   console.log(`OrderBot Backend Server running on port ${PORT}`);
+  await checkAndSeedDatabase();
   await ensureDefaultAdmin();
 });
