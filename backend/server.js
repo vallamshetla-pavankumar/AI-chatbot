@@ -12,7 +12,24 @@ try {
   console.log('[STARTUP] SQLite database initialized successfully.');
 } catch (err) {
   console.error('[STARTUP] Failed to initialize SQLite database schema:', err);
+// Check and run seed script if database is empty of menu items
+async function checkAndSeedDatabase() {
+  try {
+    const itemCount = await prisma.menuItem.count();
+    if (itemCount === 0) {
+      console.log('[STARTUP] Database is empty. Seeding initial menu items...');
+      const { execSync } = require('child_process');
+      execSync('node prisma/seed.js', { stdio: 'inherit' });
+      console.log('[STARTUP] Database seeded successfully.');
+    } else {
+      console.log(`[STARTUP] Database already has ${itemCount} items. Skipping seed.`);
+    }
+  } catch (err) {
+    console.error('[STARTUP] Failed to check or seed database:', err);
+  }
 }
+checkAndSeedDatabase();
+
 
 
 const path = require('path');
