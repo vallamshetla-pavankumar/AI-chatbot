@@ -12,6 +12,7 @@ try {
   console.log('[STARTUP] SQLite database initialized successfully.');
 } catch (err) {
   console.error('[STARTUP] Failed to initialize SQLite database schema:', err);
+}
 // Check and run seed script if database is empty of menu items
 async function checkAndSeedDatabase() {
   try {
